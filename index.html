@@ -7,6 +7,11 @@
     <meta name="theme-color" content="#ff7b00" />
     <title>KiddoDraw - PWA</title>
     <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="/icons/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta property="og:image" content="/icons/android-chrome-512x512.png" />
     <style>
         :root {
             --ui-bg: #fff6e8;
@@ -267,6 +272,10 @@
             <div style="margin: 8px 0;">
                 <div class="row" id="paletteRow"></div>
             </div>
+            <h3>Recent colors</h3>
+            <div style="margin: 8px 0;">
+                <div class="row" id="recentRow"></div>
+            </div>
             <div class="row" style="justify-content: space-between;">
                 <button value="cancel">Close</button>
                 <button id="addRecentBtn" class="chip">Add to Recents</button>
@@ -289,6 +298,7 @@
         const sizeInput = $('#size');
         const swatches = $('#swatches');
         const paletteRow = $('#paletteRow');
+        const recentRow = $('#recentRow');
         const colorDialog = $('#colorDialog');
         const colorBtn = $('#colorBtn');
         const colorDot = $('#colorDot');
@@ -351,6 +361,35 @@
                 swatches.appendChild(d);
             }
         }
+        function renderRecentRow() {
+            if (!recentRow) return;
+            recentRow.innerHTML = '';
+            if (!recentColors.length) {
+                const none = document.createElement('span');
+                none.style.opacity = '0.6';
+                none.textContent = 'No recent colors yet';
+                recentRow.appendChild(none);
+                return;
+            }
+            const group = document.createElement('div');
+            group.className = 'swatches';
+            recentColors.slice(0, 12).forEach((c) => {
+                const dot = document.createElement('button');
+                dot.className = 'color-dot'; dot.style.background = c; dot.title = c;
+                dot.addEventListener('click', () => { setColor(c, state.alpha, true); });
+                group.appendChild(dot);
+            });
+            recentRow.appendChild(group);
+        }
+        function noteColorUsed(hex) {
+            if (!hex) return;
+            const idx = recentColors.indexOf(hex);
+            if (idx !== -1) recentColors.splice(idx, 1);
+            recentColors.unshift(hex);
+            saveRecents(recentColors);
+            recolorSwatches();
+            renderRecentRow();
+        }
         function buildPalettePopup() {
             paletteRow.innerHTML = '';
             presetPalettes.forEach(p => {
@@ -370,11 +409,7 @@
             colorInput.value = hex; alphaInput.value = alpha;
             if (colorDot) colorDot.style.background = hex;
             console.log('[state] color set', { hex, alpha, addRecent });
-            if (addRecent) {
-                if (!recentColors.includes(hex)) recentColors.unshift(hex);
-                saveRecents(recentColors);
-                recolorSwatches();
-            }
+            if (addRecent) { noteColorUsed(hex); }
         }
 
         // --- Resize / HiDPI ---
@@ -531,6 +566,8 @@
             console.log('[action] add', action.type, action);
             state.actions.push(action);
             state.redo.length = 0;
+            if (action.type === 'stroke' && action.brush !== 'eraser') noteColorUsed(action.color);
+            if (action.type === 'shape' && action.style && action.style.brush !== 'eraser') noteColorUsed(action.style.color);
             if (state.actions.length - 1 > state.lastSnapshotIndex + SNAPSHOT_INTERVAL) {
                 makeSnapshot();
             }
@@ -774,6 +811,7 @@
         colorBtn.addEventListener('click', () => {
             colorInput.value = state.color; alphaInput.value = state.alpha;
             buildPalettePopup();
+            renderRecentRow();
             colorDialog.showModal();
         });
         colorInput.addEventListener('input', () => setColor(colorInput.value, state.alpha, false));
@@ -807,9 +845,21 @@
         canvas.addEventListener('pointercancel', endStroke);
         canvas.addEventListener('lostpointercapture', endStroke);
 
+        // Close dialogs on backdrop click
+        function attachBackdropClose(dlg) {
+            if (!dlg) return;
+            dlg.addEventListener('click', (e) => {
+                if (e.target === dlg) dlg.close('backdrop');
+            });
+        }
+        attachBackdropClose(brushDialog);
+        attachBackdropClose(shapeDialog);
+        attachBackdropClose(colorDialog);
+
         // Init
         setColor('#ff3b3b', 1, true);
         recolorSwatches();
+        renderRecentRow();
         resizeCanvas();
     </script>
 </body>

@@ -1,6 +1,17 @@
 /* KiddoDraw Service Worker */
-const CACHE_VERSION = "kiddodraw-v1";
-const APP_SHELL = ["./", "./index.html", "./manifest.webmanifest", "./sw.js"];
+const CACHE_VERSION = "kiddodraw-v2";
+const APP_SHELL = [
+  "./",
+  "./index.html",
+  "./manifest.webmanifest",
+  "./sw.js",
+  "/icons/android-chrome-192x192.png",
+  "/icons/android-chrome-512x512.png",
+  "/icons/apple-touch-icon.png",
+  "/icons/favicon-16x16.png",
+  "/icons/favicon-32x32.png",
+  "/icons/favicon.ico",
+];
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();

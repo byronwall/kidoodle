@@ -31,5 +31,5 @@ Installable drawing app that works offline via a service worker.
 
 Notes:
 
-- No icons are referenced in the manifest.
-- `sw.js` is no‑cache; other static files are long‑cached.
+- Icons are declared in `manifest.webmanifest` and linked in `index.html`.
+- `sw.js` pre-caches app shell and icons; `sw.js` is no‑cache; other static files are long‑cached.
