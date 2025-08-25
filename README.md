@@ -2,6 +2,8 @@
 
 Installable drawing app that works offline via a service worker.
 
+![](docs/main-app.png)
+
 ## Local quickstart
 
 - Start a local server (prefer Node):
