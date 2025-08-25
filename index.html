@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#ff7b00" />
+    <title>KiddoDraw - PWA</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <style>
+        :root {
+            --ui-bg: #fff6e8;
+            --ui-accent: #ff7b00;
+            --ui-accent-2: #ffb703;
+            --ink: #333;
+            --panel: #ffffffcc;
+            --panel-strong: #ffffffee;
+            --shadow: 0 6px 20px rgba(0, 0, 0, .15);
+            --radius: 14px;
+            --gap: 10px;
+            --toolbar-h: 72px;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: linear-gradient(180deg, #fff6e8, #ffe4c4);
+            font-family: ui-rounded, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+            color: var(--ink);
+            overscroll-behavior: none;
+        }
+
+        #app {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            grid-template-rows: var(--toolbar-h) 1fr 68px;
+            grid-template-areas: "toolbar" "stage" "footer";
+            gap: var(--gap);
+            padding: env(safe-area-inset-top) var(--gap) env(safe-area-inset-bottom);
+        }
+
+        .toolbar,
+        .footer {
+            background: var(--panel-strong);
+            box-shadow: var(--shadow);
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px;
+            overflow-x: auto;
+            scrollbar-width: thin;
+        }
+
+        .toolbar {
+            grid-area: toolbar;
+        }
+
+        .footer {
+            grid-area: footer;
+            justify-content: space-between;
+        }
+
+        .stage {
+            grid-area: stage;
+            position: relative;
+            background: #fffefc;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            /* allow drawing */
+            background: transparent;
+        }
+
+        #overlay {
+            pointer-events: none;
+            background: transparent;
+        }
+
+        button,
+        .chip {
+            border: none;
+            background: #fff;
+            color: var(--ink);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 16px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        .icon {
+            font-size: 20px;
+        }
+
+        .group {
+            display: inline-flex;
+            gap: 8px;
+            background: var(--panel);
+            border-radius: 999px;
+            padding: 6px;
+        }
+
+        .chip.selected,
+        button.selected {
+            outline: 3px solid var(--ui-accent-2);
+        }
+
+        input[type="range"] {
+            width: 160px;
+        }
+
+        .color-dot {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+            cursor: pointer;
+        }
+
+        .swatches {
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+            padding: 2px 6px;
+            background: var(--panel);
+            border-radius: 999px;
+        }
+
+        /* Hide top-bar swatches to reduce width; shown in dialog instead */
+        #swatches {
+            display: none;
+        }
+
+        .divider {
+            width: 1px;
+            height: 36px;
+            background: #0001;
+            margin: 0 6px;
+        }
+
+        dialog {
+            border: none;
+            padding: 0;
+            background: transparent;
+        }
+
+        .popup {
+            background: var(--panel-strong);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 14px;
+            min-width: 280px;
+        }
+
+        .popup h3 {
+            margin: 4px 0 10px;
+            font-size: 16px;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .kbd {
+            font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+            background: #0000000f;
+            padding: 2px 6px;
+            border-radius: 6px;
+        }
+
+        .brand {
+            font-weight: 800;
+            letter-spacing: .4px;
+            padding: 4px 10px;
+            border-radius: 8px;
+            background: #fff1e0;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div class="toolbar">
+            <span class="brand">🎨 KiddoDraw</span>
+            <div class="group">
+                <button id="brushBtn" title="Choose Brush"><span class="icon">🖌️</span><span
+                        id="brushLabel">Pen</span></button>
+            </div>
+            <div class="group">
+                <label class="chip"><span class="icon">📏</span><input id="size" type="range" min="1" max="48" value="8" /></label>
+            </div>
+            <div class="group">
+                <button id="colorBtn" title="Colors"><span class="icon">🎯</span><span id="colorDot" class="color-dot"
+                        style="width:18px;height:18px;border-width:1px;"></span></button>
+                <div class="swatches" id="swatches"></div>
+            </div>
+            <div class="group">
+                <button id="shapeBtn" title="Choose Shape"><span class="icon">🔺</span><span
+                        id="shapeLabel">Free</span></button>
+            </div>
+            <div class="group">
+                <button id="undoBtn" title="Undo (Ctrl/Cmd+Z)"><span class="icon">↩️</span></button>
+                <button id="redoBtn" title="Redo (Ctrl/Cmd+Shift+Z)"><span class="icon">↪️</span></button>
+                <button id="clearBtn" title="Clear"><span class="icon">🧹</span></button>
+                <button id="saveBtn" title="Save PNG"><span class="icon">💾</span></button>
+            </div>
+        </div>
+
+        <div class="stage">
+            <canvas id="canvas"></canvas>
+            <canvas id="overlay"></canvas>
+        </div>
+
+        <div class="footer">
+            <div>Tip: use a stylus for pressure. Mouse uses steady pressure. Shapes preview on the ghost layer.</div>
+            <div><span class="kbd">Ctrl/Cmd+Z</span> undo • <span class="kbd">Ctrl/Cmd+Shift+Z</span> redo</div>
+        </div>
+    </div>
+
+    <dialog id="brushDialog">
+        <form method="dialog" class="popup">
+            <h3>Choose a Brush</h3>
+            <div class="row" id="brushOptions"></div>
+            <div class="row" style="justify-content:flex-end;margin-top:10px;"><button value="cancel">Close</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="shapeDialog">
+        <form method="dialog" class="popup">
+            <h3>Choose a Shape</h3>
+            <div class="row" id="shapeOptions"></div>
+            <div class="row" style="justify-content:flex-end;margin-top:10px;"><button value="cancel">Close</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="colorDialog">
+        <form method="dialog" class="popup">
+            <h3>Pick a color</h3>
+            <div class="row" style="margin-bottom:8px;">
+                <input id="colorInput" type="color" value="#ff3b3b" />
+                <label>Opacity <input id="alpha" type="range" min="0" max="1" step="0.01" value="1" /></label>
+            </div>
+            <div style="margin: 8px 0;">
+                <div class="row" id="paletteRow"></div>
+            </div>
+            <div class="row" style="justify-content: space-between;">
+                <button value="cancel">Close</button>
+                <button id="addRecentBtn" class="chip">Add to Recents</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script type="module">
+        // --- Service worker registration ---
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(console.error);
+        }
+
+        // --- State ---
+        const $ = (sel) => document.querySelector(sel);
+        const canvas = $('#canvas');
+        const overlay = $('#overlay');
+        const ctx = canvas.getContext('2d');
+        const octx = overlay.getContext('2d');
+        const sizeInput = $('#size');
+        const swatches = $('#swatches');
+        const paletteRow = $('#paletteRow');
+        const colorDialog = $('#colorDialog');
+        const colorBtn = $('#colorBtn');
+        const colorDot = $('#colorDot');
+        const colorInput = $('#colorInput');
+        const alphaInput = $('#alpha');
+        const undoBtn = $('#undoBtn');
+        const redoBtn = $('#redoBtn');
+        const clearBtn = $('#clearBtn');
+        const saveBtn = $('#saveBtn');
+        const brushBtn = $('#brushBtn');
+        const brushLabel = $('#brushLabel');
+        const brushDialog = $('#brushDialog');
+        const brushOptions = $('#brushOptions');
+        const shapeBtn = $('#shapeBtn');
+        const shapeLabel = $('#shapeLabel');
+        const shapeDialog = $('#shapeDialog');
+        const shapeOptions = $('#shapeOptions');
+
+        const SNAPSHOT_INTERVAL = 25;
+
+        const state = {
+            brush: 'pen',
+            shape: 'free',
+            color: '#ff3b3b',
+            alpha: 1,
+            size: 8,
+            drawing: false,
+            points: [], // active stroke points
+            actions: [],
+            redo: [],
+            snapshots: [], // {index, bitmap}
+            lastSnapshotIndex: -1,
+            devicePixelRatio: Math.max(1, window.devicePixelRatio || 1),
+        };
+
+        const presetPalettes = [
+            ['#ff3b3b', '#ff7b00', '#ffd60a', '#80ed99', '#00b4d8', '#6a4c93', '#000000', '#ffffff'],
+            ['#f72585', '#b5179e', '#7209b7', '#560bad', '#480ca8', '#3a0ca3', '#3f37c9', '#4895ef'],
+            ['#ffadad', '#ffd6a5', '#fdffb6', '#caffbf', '#9bf6ff', '#a0c4ff', '#bdb2ff', '#ffc6ff']
+        ];
+
+        function loadRecents() {
+            try {
+                const rec = JSON.parse(localStorage.getItem('recentColors') || '[]');
+                return Array.isArray(rec) ? rec : [];
+            } catch { return []; }
+        }
+        function saveRecents(list) {
+            localStorage.setItem('recentColors', JSON.stringify(list.slice(0, 12)));
+        }
+        const recentColors = loadRecents();
+
+        function recolorSwatches() {
+            swatches.innerHTML = '';
+            const all = [...new Set([state.color, ...recentColors])].slice(0, 12);
+            for (const c of all) {
+                const d = document.createElement('button');
+                d.className = 'color-dot'; d.style.background = c; d.title = c;
+                d.addEventListener('click', () => { console.log('[ui] swatch click', c); setColor(c, state.alpha, true); colorDialog.showModal(); });
+                swatches.appendChild(d);
+            }
+        }
+        function buildPalettePopup() {
+            paletteRow.innerHTML = '';
+            presetPalettes.forEach(p => {
+                const group = document.createElement('div'); group.className = 'swatches';
+                p.forEach(c => {
+                    const dot = document.createElement('button');
+                    dot.className = 'color-dot'; dot.style.background = c; dot.title = c;
+                    dot.addEventListener('click', () => { setColor(c, state.alpha, true); });
+                    group.appendChild(dot);
+                });
+                paletteRow.appendChild(group);
+            });
+        }
+
+        function setColor(hex, alpha = 1, addRecent = false) {
+            state.color = hex; state.alpha = +alpha;
+            colorInput.value = hex; alphaInput.value = alpha;
+            if (colorDot) colorDot.style.background = hex;
+            console.log('[state] color set', { hex, alpha, addRecent });
+            if (addRecent) {
+                if (!recentColors.includes(hex)) recentColors.unshift(hex);
+                saveRecents(recentColors);
+                recolorSwatches();
+            }
+        }
+
+        // --- Resize / HiDPI ---
+        function resizeCanvas() {
+            console.log('[canvas] resize');
+            const r = state.devicePixelRatio;
+            const stage = document.querySelector('.stage');
+            const w = Math.max(1, stage.clientWidth);
+            const h = Math.max(1, stage.clientHeight);
+
+            for (const c of [canvas, overlay]) {
+                c.width = Math.floor(w * r);
+                c.height = Math.floor(h * r);
+                c.style.width = w + 'px';
+                c.style.height = h + 'px';
+            }
+            // Reset transforms to match DPR
+            ctx.setTransform(r, 0, 0, r, 0, 0);
+            octx.setTransform(r, 0, 0, r, 0, 0);
+
+            // Snapshots are tied to previous dimensions; drop them on resize
+            state.snapshots = [];
+            state.lastSnapshotIndex = -1;
+            renderAll();
+        }
+        window.addEventListener('resize', resizeCanvas, { passive: true });
+        window.addEventListener('orientationchange', resizeCanvas, { passive: true });
+
+        // --- Tools ---
+        function pressureOf(e) {
+            // PointerEvent.pressure is 0..1; mouse is 0 on move, 0.5 on down.
+            if (e.pressure && e.pressure > 0) return e.pressure;
+            return e.buttons ? 0.5 : 0;
+        }
+
+        function withBrush(fn) {
+            ctx.save();
+            const isEraser = state.brush === 'eraser';
+            ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            if (!isEraser) {
+                ctx.strokeStyle = state.color;
+                ctx.globalAlpha = state.alpha;
+            }
+            fn();
+            ctx.restore();
+        }
+
+        function drawSegment(p0, p1, baseSize, brush, pr0 = 0.5, pr1 = 0.5) {
+            const mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
+            const size0 = dynamicSize(baseSize, pr0, brush);
+            const size1 = dynamicSize(baseSize, pr1, brush);
+
+            if (brush === 'marker') ctx.globalAlpha = state.alpha * 0.6;
+            if (brush === 'pencil') { ctx.globalAlpha = state.alpha * 0.8; ctx.filter = 'blur(0.1px)'; }
+            if (brush === 'rainbow') ctx.strokeStyle = rainbowAt(p1.t);
+            if (brush === 'confetti') {
+                scatterConfetti(p1.x, p1.y, baseSize);
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(p0.x, p0.y);
+            ctx.quadraticCurveTo(p0.x, p0.y, mx, my);
+            ctx.lineWidth = (size0 + size1) / 2;
+            ctx.stroke();
+        }
+
+        function dynamicSize(base, pressure, brush) {
+            const factor = 0.5 + pressure; // 0.5..1.5
+            let sz = base * factor;
+            if (brush === 'marker') sz *= 1.5;
+            if (brush === 'pencil') sz *= 0.8;
+            if (brush === 'confetti') sz *= 1.2;
+            return Math.max(0.5, sz);
+        }
+
+        function rainbowAt(t) {
+            const h = Math.floor((t / 100) % 360);
+            return `hsl(${h}, 95%, 50%)`;
+        }
+
+        function scatterConfetti(x, y, base) {
+            const n = Math.max(2, Math.floor(base / 4));
+            for (let i = 0; i < n; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const r = Math.random() * base * 1.2;
+                const cx = x + Math.cos(ang) * r;
+                const cy = y + Math.sin(ang) * r;
+                ctx.save();
+                ctx.globalAlpha = 0.8;
+                ctx.fillStyle = rainbowAt(performance.now() + i * 33);
+                ctx.beginPath();
+                ctx.arc(cx, cy, Math.random() * 2 + 1, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // --- Shapes ---
+        function drawShape(g, shape, style) {
+            const { x1, y1, x2, y2 } = shape;
+            const w = x2 - x1, h = y2 - y1;
+            g.save();
+            const isEraser = style.brush === 'eraser';
+            g.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+            g.lineCap = 'round'; g.lineJoin = 'round';
+            g.lineWidth = style.size;
+            g.strokeStyle = isEraser ? '#000' : style.color;
+            g.globalAlpha = style.alpha;
+            if (style.brush === 'marker') g.globalAlpha *= 0.6;
+            if (style.brush === 'pencil') g.globalAlpha *= 0.8;
+            if (style.brush === 'rainbow') g.strokeStyle = rainbowAt(performance.now());
+            switch (style.shape) {
+                case 'line':
+                    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); break;
+                case 'rect':
+                    g.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(w), Math.abs(h)); break;
+                case 'ellipse': {
+                    const rx = Math.abs(w) / 2, ry = Math.abs(h) / 2;
+                    g.beginPath();
+                    g.ellipse(Math.min(x1, x2) + rx, Math.min(y1, y2) + ry, rx, ry, 0, 0, Math.PI * 2);
+                    g.stroke();
+                    break;
+                }
+                case 'arrow': {
+                    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+                    const ang = Math.atan2(y2 - y1, x2 - x1);
+                    const head = Math.max(8, style.size * 2);
+                    g.beginPath();
+                    g.moveTo(x2, y2);
+                    g.lineTo(x2 - head * Math.cos(ang - 0.4), y2 - head * Math.sin(ang - 0.4));
+                    g.lineTo(x2 - head * Math.cos(ang + 0.4), y2 - head * Math.sin(ang + 0.4));
+                    g.closePath(); g.fillStyle = g.strokeStyle; g.fill();
+                    break;
+                }
+                case 'star': {
+                    const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+                    const R = Math.hypot(w, h) / 2, r = R / 2.5, spikes = 5;
+                    g.beginPath();
+                    for (let i = 0; i < spikes * 2; i++) {
+                        const rad = (i * Math.PI) / spikes;
+                        const rr = i % 2 === 0 ? R : r;
+                        g.lineTo(cx + Math.cos(rad) * rr, cy + Math.sin(rad) * rr);
+                    }
+                    g.closePath(); g.stroke();
+                    break;
+                }
+            }
+            g.restore();
+        }
+
+        // --- Action model ---
+        function addAction(action) {
+            console.log('[action] add', action.type, action);
+            state.actions.push(action);
+            state.redo.length = 0;
+            if (state.actions.length - 1 > state.lastSnapshotIndex + SNAPSHOT_INTERVAL) {
+                makeSnapshot();
+            }
+            renderAfter(action);
+            updateButtons();
+        }
+
+        function makeSnapshot() {
+            console.log('[snapshot] making at', state.actions.length - 1);
+            const w = canvas.width, h = canvas.height;
+            const off = (typeof OffscreenCanvas !== 'undefined')
+                ? new OffscreenCanvas(w, h)
+                : Object.assign(document.createElement('canvas'), { width: w, height: h });
+            const g = off.getContext('2d');
+            g.drawImage(canvas, 0, 0);
+            const getBitmap = () => {
+                if (off.transferToImageBitmap) return Promise.resolve(off.transferToImageBitmap());
+                return createImageBitmap(off);
+            };
+            getBitmap().then((bmp) => {
+                state.snapshots.push({ index: state.actions.length - 1, bitmap: bmp });
+                state.lastSnapshotIndex = state.actions.length - 1;
+                if (state.snapshots.length > 4) state.snapshots.shift();
+            }).catch(console.warn);
+        }
+
+        function findLatestSnapshot() {
+            let snap = null;
+            for (let i = state.snapshots.length - 1; i >= 0; i--) {
+                if (state.snapshots[i].index <= state.actions.length - 1) { snap = state.snapshots[i]; break; }
+            }
+            return snap;
+        }
+
+        function renderAll() {
+            console.log('[render] full');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const snap = findLatestSnapshot();
+            let startIndex = 0;
+            if (snap) {
+                ctx.drawImage(snap.bitmap, 0, 0);
+                startIndex = snap.index + 1;
+            }
+            for (let i = startIndex; i < state.actions.length; i++) {
+                replayAction(state.actions[i], ctx);
+            }
+            octx.clearRect(0, 0, overlay.width, overlay.height);
+        }
+
+        function renderAfter(action) {
+            replayAction(action, ctx);
+        }
+
+        function replayAction(action, g) {
+            if (action.type === 'clear') {
+                g.clearRect(0, 0, canvas.width, canvas.height);
+                return;
+            }
+            if (action.type === 'shape') {
+                drawShape(g, action.shape, action.style);
+                return;
+            }
+            if (action.type === 'stroke') {
+                g.save();
+                const brush = action.brush;
+                const isEraser = brush === 'eraser';
+                g.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+                g.lineCap = 'round'; g.lineJoin = 'round';
+                if (!isEraser) {
+                    g.strokeStyle = action.color;
+                    g.globalAlpha = action.alpha;
+                }
+                const pts = action.points;
+                for (let i = 1; i < pts.length; i++) {
+                    const p0 = pts[i - 1], p1 = pts[i];
+                    if (brush === 'rainbow') g.strokeStyle = rainbowAt(p1.t);
+                    if (brush === 'marker') g.globalAlpha = action.alpha * 0.6;
+                    if (brush === 'pencil') { g.globalAlpha = action.alpha * 0.8; g.filter = 'blur(0.1px)'; }
+                    g.beginPath();
+                    g.moveTo(p0.x, p0.y);
+                    g.lineTo(p1.x, p1.y);
+                    g.lineWidth = (dynamicSize(action.size, p0.p, brush) + dynamicSize(action.size, p1.p, brush)) / 2;
+                    g.stroke();
+                }
+                g.restore();
+            }
+        }
+
+        function updateButtons() {
+            undoBtn.disabled = state.actions.length === 0;
+            redoBtn.disabled = state.redo.length === 0;
+        }
+
+        function undo() {
+            if (!state.actions.length) return;
+            console.log('[history] undo');
+            state.redo.push(state.actions.pop());
+            renderAll();
+            updateButtons();
+        }
+        function redo() {
+            if (!state.redo.length) return;
+            console.log('[history] redo');
+            const a = state.redo.pop();
+            state.actions.push(a);
+            renderAfter(a);
+            updateButtons();
+        }
+        function clearAll() {
+            console.log('[action] clear');
+            addAction({ type: 'clear' });
+        }
+
+        // --- Interaction ---
+        function stagePoint(e) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+
+        function startStroke(e) {
+            console.log('[pointer] down', { shape: state.shape, brush: state.brush });
+            if (state.shape !== 'free') {
+                startShape(e); return;
+            }
+            state.drawing = true; state.points = [];
+            canvas.setPointerCapture(e.pointerId);
+            const p = stagePoint(e);
+            const pt = { x: p.x, y: p.y, p: pressureOf(e), t: performance.now() };
+            state.points.push(pt);
+        }
+        function moveStroke(e) {
+            if (!state.drawing || state.shape !== 'free') { previewShape(e); return; }
+            const p = stagePoint(e);
+            const pt = { x: p.x, y: p.y, p: pressureOf(e), t: performance.now() };
+            state.points.push(pt);
+            withBrush(() => {
+                const n = state.points.length;
+                if (n > 1) {
+                    drawSegment(state.points[n - 2], state.points[n - 1], state.size, state.brush, state.points[n - 2].p, state.points[n - 1].p);
+                }
+            });
+        }
+        function endStroke(e) {
+            console.log('[pointer] up', { drawing: state.drawing, points: state.points.length });
+            if (state.shape !== 'free') { endShape(e); return; }
+            if (!state.drawing) return;
+            state.drawing = false;
+            canvas.releasePointerCapture(e.pointerId);
+            if (state.points.length > 1) {
+                addAction({
+                    type: 'stroke',
+                    brush: state.brush,
+                    color: state.color,
+                    alpha: state.alpha,
+                    size: state.size,
+                    points: state.points.slice()
+                });
+            }
+            state.points.length = 0;
+        }
+
+        // --- Shape interactions ---
+        let shapeDrag = null;
+        function startShape(e) {
+            console.log('[shape] start', state.shape);
+            if (state.shape === 'free') return;
+            canvas.setPointerCapture(e.pointerId);
+            const p = stagePoint(e);
+            shapeDrag = { x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+        }
+        function previewShape(e) {
+            if (!shapeDrag) return;
+            const p = stagePoint(e);
+            shapeDrag.x2 = p.x; shapeDrag.y2 = p.y;
+            octx.clearRect(0, 0, overlay.width, overlay.height);
+            drawShape(octx, shapeDrag, { shape: state.shape, size: state.size, brush: state.brush, color: state.color, alpha: state.alpha });
+        }
+        function endShape(e) {
+            console.log('[shape] end');
+            if (!shapeDrag) return;
+            canvas.releasePointerCapture(e.pointerId);
+            octx.clearRect(0, 0, overlay.width, overlay.height);
+            const sh = { ...shapeDrag };
+            shapeDrag = null;
+            addAction({
+                type: 'shape',
+                shape: sh,
+                style: { shape: state.shape, size: state.size, brush: state.brush, color: state.color, alpha: state.alpha }
+            });
+        }
+
+        // --- UI Wiring ---
+        function rebuildBrushOptions() {
+            const brushes = [
+                { id: 'pen', label: 'Pen', icon: '✏️' },
+                { id: 'marker', label: 'Marker', icon: '🖍️' },
+                { id: 'pencil', label: 'Pencil', icon: '🧷' },
+                { id: 'rainbow', label: 'Rainbow', icon: '🌈' },
+                { id: 'confetti', label: 'Confetti', icon: '🎉' },
+                { id: 'eraser', label: 'Eraser', icon: '🧽' },
+            ];
+            brushOptions.innerHTML = '';
+            brushes.forEach(({ id, label, icon }) => {
+                const btn = document.createElement('button');
+                btn.className = 'chip' + (state.brush === id ? ' selected' : '');
+                btn.innerHTML = `<span class="icon">${icon}</span>${label}`;
+                btn.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    state.brush = id; brushLabel.textContent = label; console.log('[ui] brush set', id);
+                    rebuildBrushOptions();
+                });
+                brushOptions.appendChild(btn);
+            });
+        }
+        function rebuildShapeOptions() {
+            const shapes = [
+                { id: 'free', label: 'Free', icon: '✍️' },
+                { id: 'line', label: 'Line', icon: '➖' },
+                { id: 'rect', label: 'Rect', icon: '⬛' },
+                { id: 'ellipse', label: 'Ellipse', icon: '⚪' },
+                { id: 'arrow', label: 'Arrow', icon: '➡️' },
+                { id: 'star', label: 'Star', icon: '⭐' },
+            ];
+            shapeOptions.innerHTML = '';
+            shapes.forEach(({ id, label, icon }) => {
+                const btn = document.createElement('button');
+                btn.className = 'chip' + (state.shape === id ? ' selected' : '');
+                btn.innerHTML = `<span class="icon">${icon}</span>${label}`;
+                btn.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    state.shape = id; shapeLabel.textContent = label; octx.clearRect(0, 0, overlay.width, overlay.height); console.log('[ui] shape set', id);
+                    rebuildShapeOptions();
+                });
+                shapeOptions.appendChild(btn);
+            });
+        }
+        brushBtn.addEventListener('click', () => { rebuildBrushOptions(); brushDialog.showModal(); });
+        shapeBtn.addEventListener('click', () => { rebuildShapeOptions(); shapeDialog.showModal(); });
+        sizeInput.addEventListener('input', () => state.size = +sizeInput.value);
+
+        colorBtn.addEventListener('click', () => {
+            colorInput.value = state.color; alphaInput.value = state.alpha;
+            buildPalettePopup();
+            colorDialog.showModal();
+        });
+        colorInput.addEventListener('input', () => setColor(colorInput.value, state.alpha, false));
+        alphaInput.addEventListener('input', () => setColor(state.color, alphaInput.value, false));
+        document.getElementById('addRecentBtn').addEventListener('click', (e) => {
+            e.preventDefault(); setColor(colorInput.value, alphaInput.value, true);
+        });
+
+        undoBtn.addEventListener('click', undo);
+        redoBtn.addEventListener('click', redo);
+        clearBtn.addEventListener('click', clearAll);
+        saveBtn.addEventListener('click', () => {
+            const a = document.createElement('a');
+            a.download = 'kiddodraw.png';
+            a.href = canvas.toDataURL('image/png');
+            a.click();
+        });
+
+        // Keyboard shortcuts
+        window.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                if (e.shiftKey) redo(); else undo();
+                e.preventDefault();
+            }
+        });
+
+        // Pointer events
+        canvas.addEventListener('pointerdown', startStroke);
+        canvas.addEventListener('pointermove', moveStroke);
+        canvas.addEventListener('pointerup', endStroke);
+        canvas.addEventListener('pointercancel', endStroke);
+        canvas.addEventListener('lostpointercapture', endStroke);
+
+        // Init
+        setColor('#ff3b3b', 1, true);
+        recolorSwatches();
+        resizeCanvas();
+    </script>
+</body>
+
+</html>

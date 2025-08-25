@@ -1,0 +1,8 @@
+{
+    "name": "KiddoDraw",
+    "short_name": "KiddoDraw",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#fffbf0",
+    "theme_color": "#ff7b00"
+}
