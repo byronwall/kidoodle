@@ -1,9 +1,0 @@
-services:
-  web:
-    image: kidoodle:local
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "80"
-    restart: unless-stopped
